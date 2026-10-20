@@ -67,6 +67,8 @@ Then:
 
 Pass `--domain` on every deploy. The config file names no domain, so the repository stays generic.
 
+When the first deploy creates the database, Wrangler may write its `database_id` into `wrangler.toml`. Discard that change: later deploys and `wrangler d1` commands find the database by name. To avoid the write altogether, run `npx wrangler d1 create heartbeat-worker` before the first deploy.
+
 Without `SLACK_WEBHOOK_URL`, incidents are still recorded, but nothing is posted.
 
 ## Operating it
