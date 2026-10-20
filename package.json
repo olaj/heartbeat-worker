@@ -1,0 +1,36 @@
+{
+  "name": "heartbeat-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small dead man's switch for scheduled jobs, on Cloudflare Workers and D1. Jobs ping it; it posts to Slack when one goes quiet or reports a failure.",
+  "license": "MIT",
+  "author": "Ola",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olaj/heartbeat-worker.git"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm test"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.6",
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.3"
+  },
+  "allowScripts": {
+    "workerd@1.20261019.1": true,
+    "esbuild@0.28.2": true
+  }
+}
