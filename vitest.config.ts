@@ -12,6 +12,7 @@ export default defineConfig(async () => {
             TEST_MIGRATIONS: migrations,
             PING_TOKEN: "test-ping-token",
             READ_TOKEN: "test-read-token",
+            CLOUDFLARE_WEBHOOK_SECRET: "test-webhook-secret",
             SLACK_WEBHOOK_URL: "https://hooks.slack.test/services/TEST",
           },
         },

@@ -3,6 +3,7 @@ import { vi } from "vitest";
 
 export const PING = { Authorization: "Bearer test-ping-token" };
 export const READ = { Authorization: "Bearer test-read-token" };
+export const WEBHOOK = { "cf-webhook-auth": "test-webhook-secret" };
 export const HOUR = 3600 * 1000;
 export const T0 = Date.UTC(2026, 9, 20, 12, 0, 0);
 
@@ -11,6 +12,7 @@ export async function resetDatabase() {
     env.DB.prepare("DELETE FROM jobs"),
     env.DB.prepare("DELETE FROM incidents"),
     env.DB.prepare("DELETE FROM meta"),
+    env.DB.prepare("DELETE FROM health_checks"),
   ]);
 }
 

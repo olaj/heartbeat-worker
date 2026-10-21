@@ -8,6 +8,7 @@ Each job pings the Worker when it finishes. If a ping is late, or a job reports 
 - **Failures are reported, not just inferred.** A job that knows it failed alerts within a minute and says why.
 - **The watcher is watched.** `/health` turns unhealthy when the Worker's own cron trigger stops running. Point an outside check at it.
 - **A read-only status page**, plus a JSON status API for scripts and agents.
+- **Optional: tidier Cloudflare health check alerts.** Point a Cloudflare notification at the Worker and it posts one short line per outage instead of Cloudflare's own block of text.
 
 It runs comfortably on the Workers free plan.
 
@@ -40,6 +41,7 @@ Send the ping last, after the work has succeeded, and never let a failed ping fa
 | `GET /health` | none | `200` if the cron trigger ran in the last 5 minutes, `503` otherwise. Shows no job data. |
 | `GET /api/status` | `Bearer <READ_TOKEN>` | JSON: every job and its state, incidents from the last 14 days, and the last check time. |
 | `GET /` | Cloudflare Access | The status page. |
+| `POST /cloudflare/health` | `cf-webhook-auth: <CLOUDFLARE_WEBHOOK_SECRET>` | Receives Cloudflare notifications. See [below](#cloudflare-health-check-alerts). |
 
 The read token and the ping token are separate on purpose. Whatever reads status can never send a ping, so it can never make a dead job look alive.
 
@@ -70,6 +72,31 @@ Pass `--domain` on every deploy. The config file names no domain, so the reposit
 When the first deploy creates the database, Wrangler may write its `database_id` into `wrangler.toml`. Discard that change: later deploys and `wrangler d1` commands find the database by name. To avoid the write altogether, run `npx wrangler d1 create heartbeat-worker` before the first deploy.
 
 Without `SLACK_WEBHOOK_URL`, incidents are still recorded, but nothing is posted.
+
+## Cloudflare health check alerts
+
+Cloudflare's own Slack message for a health check is a dozen lines of ids and labels, and a burst of "Healthy" posts appears whenever checks are created. Sent through the Worker instead, the same alerts read:
+
+```
+🔴 *image-server* is down: got 503, expected 200
+✅ *image-server* is back up after 4m
+```
+
+"Back up" is only posted for a check the Worker announced as down, so new checks and repeated "Healthy" notifications stay quiet. Any other notification, including the dashboard's test message, is passed on to Slack as it is.
+
+To set it up:
+
+```sh
+npx wrangler secret put CLOUDFLARE_WEBHOOK_SECRET   # another long random string
+```
+
+1. Bypass Access for `/cloudflare/health`, as for `/ping/*`.
+2. In Cloudflare **Notifications → Destinations**, create a generic webhook with the URL `https://heartbeat.example.com/cloudflare/health` and the same secret. Cloudflare sends it in the `cf-webhook-auth` header; the Worker refuses anything else, including the ping and read tokens.
+3. Point your Health Checks notification at that webhook, and remove its Slack destination once a test alert looks right.
+
+If Slack refuses a message, the endpoint answers `502` and leaves its state as it was, so a redelivery posts it. The payload Cloudflare sends has no URL for the check, so the message names the check but does not link it.
+
+One caveat: if the Worker itself is broken, its alerts cannot reach Slack through it. Keep the health check on `/health` notifying Slack directly, in a notification of its own.
 
 ## Operating it
 

@@ -1,7 +1,8 @@
 # Nothing in here is specific to one deployment. The D1 database is provisioned
 # by name on the first deploy, and the custom domain is passed at deploy time:
 #   npx wrangler deploy --domain heartbeat.example.com
-# Secrets (PING_TOKEN, READ_TOKEN, SLACK_WEBHOOK_URL) are set with
+# Secrets (PING_TOKEN, READ_TOKEN, SLACK_WEBHOOK_URL, and optionally
+# CLOUDFLARE_WEBHOOK_SECRET) are set with
 # `wrangler secret put`. See README.md.
 name = "heartbeat-worker"
 main = "src/index.ts"
