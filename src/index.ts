@@ -1,4 +1,5 @@
-import { hasToken } from "./auth";
+import { hasToken, hasWebhookSecret } from "./auth";
+import { type CloudflareNotification, receiveNotification } from "./cloudflare";
 import type { Env } from "./env";
 import { flushNotifications } from "./slack";
 import { readStatus, renderStatusPage } from "./status";
@@ -28,6 +29,25 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
       { ok: healthy, lastCheck: checked === null ? null : new Date(checked).toISOString() },
       healthy ? 200 : 503,
     );
+  }
+
+  if (url.pathname === "/cloudflare/health") {
+    if (request.method !== "POST") return error(405, "use POST");
+    if (!hasWebhookSecret(request, env.CLOUDFLARE_WEBHOOK_SECRET)) {
+      return error(401, "missing or wrong cf-webhook-auth secret");
+    }
+    let payload: unknown;
+    try {
+      payload = await request.json();
+    } catch {
+      return error(400, "body must be JSON");
+    }
+    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+      return error(400, "body must be a JSON object");
+    }
+    const result = await receiveNotification(env, payload as CloudflareNotification, now);
+    if (result.slackRefused) return error(502, "Slack refused the message; a retry will post it");
+    return json({ ok: true, posted: result.posted });
   }
 
   if ((action === "ping" || action === "fail") && rawName !== undefined && extra === undefined) {

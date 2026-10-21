@@ -135,7 +135,7 @@ describe("failures", () => {
 });
 
 describe("Slack", () => {
-  it("posts the incident and its resolution in Better Stack's words", async () => {
+  it("posts the incident and its resolution, keeping Better Stack's key phrases", async () => {
     const { posted } = mockSlack();
     await recordPing(env.DB, "Reports", hourly, T0);
     await checkDeadlines(env.DB, T0 + HOUR + 11 * 60000);
@@ -143,8 +143,8 @@ describe("Slack", () => {
     await recordPing(env.DB, "Reports", {}, T0 + HOUR + 53 * 60000);
     await flushNotifications(env);
     expect(posted).toEqual([
-      "*New incident for Reports*\nNo ping since 2026-10-20T12:00:00.000Z. Expected every 1h, grace 10m.",
-      "*Automatically resolved Reports incident*\nLasted 42m.",
+      "🔴 *New incident for Reports*: no ping since <!date^1792497600^{date_short_pretty} at {time}|2026-10-20 12:00 UTC> (expected every 1h, grace 10m)",
+      "✅ *Automatically resolved Reports incident* after 42m",
     ]);
   });
 
@@ -152,7 +152,17 @@ describe("Slack", () => {
     const { posted } = mockSlack();
     await recordFailure(env.DB, "Hourly", hourly, "line one\nline two", T0);
     await flushNotifications(env);
-    expect(posted).toEqual(["*New incident for Hourly*\nThe job reported a failure.\n> line one\n> line two"]);
+    expect(posted).toEqual(["🔴 *New incident for Hourly*: the job reported a failure\n> line one\n> line two"]);
+  });
+
+  it("says when a late job never pinged at all", async () => {
+    const { posted } = mockSlack();
+    await env.DB.prepare("INSERT INTO jobs (name, every_seconds, grace_seconds, created_at) VALUES ('Fresh', 3600, 600, ?)")
+      .bind(T0)
+      .run();
+    await checkDeadlines(env.DB, T0 + 2 * HOUR);
+    await flushNotifications(env);
+    expect(posted).toEqual(["🔴 *New incident for Fresh*: no ping yet (expected every 1h, grace 10m)"]);
   });
 
   it("never posts the same message twice", async () => {
@@ -181,9 +191,9 @@ describe("Slack", () => {
     vi.restoreAllMocks();
     const { posted } = mockSlack();
     await flushNotifications(env);
-    expect(posted.map((p) => p.split("\n")[0])).toEqual([
-      "*New incident for Hourly*",
-      "*Automatically resolved Hourly incident*",
+    expect(posted.map((p) => /\*([^*]+)\*/.exec(p)![1])).toEqual([
+      "New incident for Hourly",
+      "Automatically resolved Hourly incident",
     ]);
   });
 });

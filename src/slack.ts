@@ -6,28 +6,40 @@ import type { IncidentRow, JobRow } from "./store";
 const BATCH = 20;
 const MAX_DETAIL_IN_SLACK = 500;
 
-// The first line of each message copies Better Stack's wording, so anything
-// that reads #bad-notifications today keeps working.
+/** Escapes the three characters Slack treats as markup in message text. */
+export const slackEscape = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
+
+/**
+ * A time Slack shows in each reader's own time zone, such as "today at 14:05".
+ * Clients that cannot render it show the UTC fallback.
+ */
+export function slackDate(ms: number): string {
+  const fallback = new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  return `<!date^${Math.floor(ms / 1000)}^{date_short_pretty} at {time}|${fallback}>`;
+}
+
+// "New incident for X" and "Automatically resolved X incident" copy Better
+// Stack's wording, and automated readers of the channel match on them. Keep
+// those phrases intact; what comes before and after them is free.
 export function openedMessage(incident: IncidentRow, job: JobRow | null): string {
-  const lines = [`*New incident for ${incident.job}*`];
+  const title = `🔴 *New incident for ${incident.job}*`;
   if (incident.cause === "failed") {
-    lines.push("The job reported a failure.");
+    const lines = [`${title}: the job reported a failure`];
     if (incident.detail) lines.push("> " + incident.detail.slice(0, MAX_DETAIL_IN_SLACK).replace(/\n/g, "\n> "));
-  } else if (job) {
-    const since = job.last_ping ? `since ${new Date(job.last_ping).toISOString()}` : "yet";
-    lines.push(
-      `No ping ${since}. Expected every ${formatDuration(job.every_seconds)}, grace ${formatDuration(job.grace_seconds)}.`,
-    );
+    return lines.join("\n");
   }
-  return lines.join("\n");
+  if (!job) return title;
+  const since = job.last_ping ? `since ${slackDate(job.last_ping)}` : "yet";
+  return `${title}: no ping ${since} (expected every ${formatDuration(job.every_seconds)}, grace ${formatDuration(job.grace_seconds)})`;
 }
 
 export function resolvedMessage(incident: IncidentRow): string {
   const lasted = humanDuration((incident.resolved_at ?? incident.opened_at) - incident.opened_at);
-  return `*Automatically resolved ${incident.job} incident*\nLasted ${lasted}.`;
+  return `✅ *Automatically resolved ${incident.job} incident* after ${lasted}`;
 }
 
-async function post(webhook: string, text: string): Promise<boolean> {
+/** Posts one message. False if Slack could not be reached or refused it. */
+export async function post(webhook: string, text: string): Promise<boolean> {
   try {
     const response = await fetch(webhook, {
       method: "POST",
