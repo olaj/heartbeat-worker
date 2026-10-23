@@ -7,7 +7,11 @@
 name = "heartbeat-worker"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
-workers_dev = false
+# Cloudflare Notifications cannot reach the custom domain (its webhook test gets
+# a 403 before the Worker sees it), so /cloudflare/health is reached through
+# workers.dev. Every path there checks its own secret, and the status page
+# refuses requests that did not come through Access.
+workers_dev = true
 
 [[d1_databases]]
 binding = "DB"
