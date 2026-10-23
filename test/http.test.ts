@@ -15,7 +15,10 @@ beforeEach(async () => {
   await resetDatabase();
   mockSlack();
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe("/ping and /fail", () => {
   it("registers a job and answers with its schedule", async () => {
@@ -73,13 +76,26 @@ describe("/health", () => {
     expect((await get("/health")).status).toBe(503);
   });
 
-  it("is healthy right after a run and unhealthy once runs stop", async () => {
+  it("is healthy right after a run, and through a late one, until runs stop for 10 minutes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     await runCron(Date.now());
     expect((await get("/health")).status).toBe(200);
-    await runCron(Date.now() - 6 * 60 * 1000);
+    vi.setSystemTime(Date.now() + 9 * 60 * 1000);
+    expect((await get("/health")).status).toBe(200);
+    vi.setSystemTime(Date.now() + 2 * 60 * 1000);
     const response = await get("/health");
     expect(response.status).toBe(503);
     expect(Object.keys(await response.json())).toEqual(["ok", "lastCheck"]);
+  });
+
+  it("stays healthy when Cloudflare delivers an old run late", async () => {
+    // A late run still carries its original scheduledTime, minutes ago.
+    await runCron(Date.now());
+    await runCron(Date.now() - 15 * 60 * 1000);
+    const response = await get("/health");
+    expect(response.status).toBe(200);
+    const { lastCheck } = (await response.json()) as { lastCheck: string };
+    expect(Date.now() - Date.parse(lastCheck)).toBeLessThan(60 * 1000);
   });
 });
 
@@ -89,6 +105,8 @@ describe("/api/status", () => {
     await recordPing(env.DB, "Fine", { every: 3600 }, now);
     await recordPing(env.DB, "Late", { every: 3600, grace: 600 }, now - 2 * HOUR);
     await recordFailure(env.DB, "Broken", { every: 3600 }, "boom", now);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
     await runCron(now);
 
     const response = await get("/api/status", READ);

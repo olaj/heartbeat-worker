@@ -38,7 +38,7 @@ Send the ping last, after the work has succeeded, and never let a failed ping fa
 
 | Path | Auth | What |
 |---|---|---|
-| `GET /health` | none | `200` if the cron trigger ran in the last 5 minutes, `503` otherwise. Shows no job data. |
+| `GET /health` | none | `200` if the cron trigger ran in the last 10 minutes, `503` otherwise. Cloudflare sometimes runs an every-minute trigger a few minutes late, so a shorter window would flap. Shows no job data. |
 | `GET /api/status` | `Bearer <READ_TOKEN>` | JSON: every job and its state, incidents from the last 14 days, and the last check time. |
 | `GET /` | Cloudflare Access | The status page. |
 | `POST /cloudflare/health` | `cf-webhook-auth: <CLOUDFLARE_WEBHOOK_SECRET>` | Receives Cloudflare notifications. See [below](#cloudflare-health-check-alerts). |
