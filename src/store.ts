@@ -151,8 +151,13 @@ export async function checkDeadlines(db: D1Database, now: number): Promise<strin
     ...late.map((name) =>
       db.prepare("INSERT OR IGNORE INTO incidents (job, cause, opened_at) VALUES (?, 'late', ?)").bind(name, now),
     ),
+    // Only ever forward: a late or overlapping run that commits last must
+    // not make the cron look older than it is.
     db
-      .prepare("INSERT INTO meta (key, value) VALUES ('last_check', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
+      .prepare(
+        `INSERT INTO meta (key, value) VALUES ('last_check', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value
+         WHERE CAST(excluded.value AS INTEGER) > CAST(meta.value AS INTEGER)`,
+      )
       .bind(String(now)),
     db
       .prepare("DELETE FROM incidents WHERE resolved_at IS NOT NULL AND resolved_at < ? AND resolve_notified = 1")

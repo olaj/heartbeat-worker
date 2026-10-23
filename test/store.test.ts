@@ -82,6 +82,12 @@ describe("deadlines", () => {
     expect(await env.DB.prepare("SELECT value FROM meta WHERE key = 'last_check'").first("value")).toBe(String(T0));
   });
 
+  it("never moves the last check back, whichever run commits last", async () => {
+    await checkDeadlines(env.DB, T0 + HOUR);
+    await checkDeadlines(env.DB, T0);
+    expect(await env.DB.prepare("SELECT value FROM meta WHERE key = 'last_check'").first("value")).toBe(String(T0 + HOUR));
+  });
+
   it("prunes announced, resolved incidents after 90 days", async () => {
     await recordPing(env.DB, "Hourly", hourly, T0);
     await checkDeadlines(env.DB, T0 + 2 * HOUR);

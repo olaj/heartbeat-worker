@@ -5,8 +5,12 @@ import { flushNotifications } from "./slack";
 import { readStatus, renderStatusPage } from "./status";
 import { BadRequest, checkDeadlines, JOB_NAME, lastCheck, readSchedule, recordFailure, recordPing } from "./store";
 
-/** /health turns unhealthy when the cron trigger has not run for this long. */
-const STALE_CHECK_MS = 5 * 60 * 1000;
+/**
+ * /health turns unhealthy when the cron trigger has not run for this long.
+ * Cloudflare can deliver an every-minute trigger minutes late or skip a few
+ * minutes, so this leaves room for that; a dead cron still shows within it.
+ */
+const STALE_CHECK_MS = 10 * 60 * 1000;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -109,8 +113,11 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
 export default {
   fetch: handle,
 
-  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    await checkDeadlines(env.DB, controller.scheduledTime);
+  // The clock, not controller.scheduledTime: Cloudflare sometimes delivers a
+  // run many minutes late, after later runs, still carrying its original
+  // scheduledTime. Recorded as the last check, that time made /health fail.
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    await checkDeadlines(env.DB, Date.now());
     await flushNotifications(env);
   },
 } satisfies ExportedHandler<Env>;
