@@ -78,6 +78,21 @@ describe("reading the payload", () => {
     const odd = notification("api", "Healthy");
     expect(readHealthEvent({ ...odd, alert_event: "SOMETHING_NEW", data: { ...odd.data, new_health_status: "Degraded" } }, 0)).toBeNull();
   });
+
+  it("reads a notification that carries only its text, as real ones can", () => {
+    const text = (status: string, extra = "") =>
+      "Health Check Name: heartbeat-worker\nHealth Check ID: 4a2acdc932d0d8c3f44672af79bd03fa\n" +
+      `Time : 2026-10-23 12:42:27 +0000 UTC\nStatus: ${status}\n${extra}`;
+    const at = Date.UTC(2026, 9, 23, 12, 42, 27);
+    expect(
+      readHealthEvent(
+        { name: "CF Worker", text: text("Unhealthy", "Failure reason: Response code mismatch error \nExpected codes: [200]\nReceived code: 503") },
+        0,
+      ),
+    ).toEqual({ id: "4a2acdc932d0d8c3f44672af79bd03fa", name: "heartbeat-worker", healthy: false, at, reason: "got 503, expected 200" });
+    expect(readHealthEvent({ name: "CF Worker", text: text("Healthy") }, 0)).toMatchObject({ healthy: true, at, reason: null });
+    expect(readHealthEvent({ text: "Health Check Name: x\nStatus: Degraded" }, 0)).toBeNull();
+  });
 });
 
 describe("POST /cloudflare/health", () => {

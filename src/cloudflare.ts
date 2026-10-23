@@ -51,7 +51,7 @@ function failureReason(text: string | null, reason: string | null): string | nul
 export function readHealthEvent(payload: CloudflareNotification, now: number): HealthEvent | null {
   const data = payload.data ?? {};
   const name = str(data.health_check_name);
-  if (payload.alert_type !== "health_check_status_notification" || !name) return null;
+  if (payload.alert_type !== "health_check_status_notification" || !name) return readHealthEventFromText(payload, now);
 
   const status = (str(data.new_health_status) ?? str(data.new_status))?.toLowerCase();
   let healthy: boolean;
@@ -69,6 +69,41 @@ export function readHealthEvent(payload: CloudflareNotification, now: number): H
     healthy,
     at,
     reason: healthy ? null : failureReason(str(payload.text), str(data.reason)),
+  };
+}
+
+/** The value after "<label>:" on a line of the notification text. */
+const field = (text: string, label: string) =>
+  new RegExp(`^\\s*${label}\\s*:[ \\t]*(.*?)\\s*$`, "im").exec(text)?.[1] || null;
+
+/**
+ * Real health check notifications can arrive with only their text filled in,
+ * unlike the documented schema:
+ *
+ *   Health Check Name: heartbeat-worker
+ *   Health Check ID: 4a2acdc932d0d8c3f44672af79bd03fa
+ *   Time : 2026-10-23 12:42:27 +0000 UTC
+ *   Status: Unhealthy
+ *   Failure reason: Response code mismatch error
+ */
+function readHealthEventFromText(payload: CloudflareNotification, now: number): HealthEvent | null {
+  const text = str(payload.text);
+  if (!text) return null;
+  const name = field(text, "Health Check Name");
+  const status = field(text, "Status")?.toLowerCase();
+  if (!name || (status !== "healthy" && status !== "unhealthy")) return null;
+  const healthy = status === "healthy";
+
+  // "2026-10-23 12:42:27 +0000 UTC" → "2026-10-23T12:42:27+00:00"
+  const time = /^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) ([+-]\d\d)(\d\d)/.exec(field(text, "Time") ?? "");
+  const changed = time ? Date.parse(`${time[1]}T${time[2]}${time[3]}:${time[4]}`) : NaN;
+  const at = Number.isFinite(changed) ? changed : typeof payload.ts === "number" ? payload.ts * 1000 : now;
+  return {
+    id: field(text, "Health Check ID") ?? name,
+    name,
+    healthy,
+    at,
+    reason: healthy ? null : failureReason(text, field(text, "Failure reason")),
   };
 }
 
@@ -106,6 +141,8 @@ export async function receiveNotification(
   const event = readHealthEvent(payload, now);
 
   if (!event) {
+    // Kept in Workers Logs, so a payload shape we do not read yet can be looked up.
+    console.log("passing on a notification as it is", JSON.stringify(payload));
     const ok = await send(otherMessage(payload));
     return { posted: ok && !!webhook, slackRefused: !ok };
   }
