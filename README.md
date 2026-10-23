@@ -90,9 +90,10 @@ To set it up:
 npx wrangler secret put CLOUDFLARE_WEBHOOK_SECRET   # another long random string
 ```
 
-1. Bypass Access for `/cloudflare/health`, as for `/ping/*`.
-2. In Cloudflare **Notifications → Destinations**, create a generic webhook with the URL `https://heartbeat.example.com/cloudflare/health` and the same secret. Cloudflare sends it in the `cf-webhook-auth` header; the Worker refuses anything else, including the ping and read tokens.
-3. Point your Health Checks notification at that webhook, and remove its Slack destination once a test alert looks right.
+1. In Cloudflare **Notifications → Destinations**, create a generic webhook with the Worker's workers.dev URL, `https://heartbeat-worker.<your-subdomain>.workers.dev/cloudflare/health`, and the same secret. Cloudflare sends it in the `cf-webhook-auth` header; the Worker refuses anything else, including the ping and read tokens.
+2. Point your Health Checks notification at that webhook, and remove its Slack destination once a test alert looks right.
+
+Use workers.dev, not the custom domain: Cloudflare's webhook test against the custom domain gets a 403 before the request reaches the Worker, even with Access bypassed for the path. `wrangler.toml` turns workers.dev on for this. Every path there checks its own secret, and the status page refuses requests that did not come through Access.
 
 If Slack refuses a message, the endpoint answers `502` and leaves its state as it was, so a redelivery posts it. The payload Cloudflare sends has no URL for the check, so the message names the check but does not link it.
 
