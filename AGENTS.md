@@ -8,5 +8,6 @@ A public, generic dead man's switch for scheduled jobs: one Cloudflare Worker, o
 - **Slack wording is an interface.** The bold phrases `*New incident for X*` and `*Automatically resolved X incident*` copy Better Stack's, and automated readers match on them. Text around them (the emoji, the reason) may change; the phrases may not.
 - **Schema changes are new files in `migrations/`,** never edits to an applied one.
 - `npm run check` must pass before pushing. CI runs the same.
+- **Deploying is the owner's.** Work on a branch and open a pull request; the owner merges. No `wrangler deploy`, no `wrangler secret`, no `--remote` D1 commands and no Cloudflare dashboard changes. Don't post to a real Slack webhook; test against a stub.
 
 The owner reads pull requests as a product owner: say what changes for a user of the Worker and what could break, before how.
