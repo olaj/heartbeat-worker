@@ -2,6 +2,7 @@ import { hasToken, hasWebhookSecret } from "./auth";
 import { type CloudflareNotification, receiveNotification } from "./cloudflare";
 import type { Env } from "./env";
 import { flushNotifications } from "./slack";
+import { retryD1 } from "./retry";
 import { readStatus, renderStatusPage } from "./status";
 import { BadRequest, checkDeadlines, JOB_NAME, lastCheck, readSchedule, recordFailure, recordPing } from "./store";
 
@@ -27,7 +28,7 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   if (url.pathname === "/health") {
     if (request.method !== "GET") return error(405, "use GET");
-    const checked = await lastCheck(env.DB);
+    const checked = await retryD1(() => lastCheck(env.DB));
     const healthy = checked !== null && now - checked <= STALE_CHECK_MS;
     return json(
       { ok: healthy, lastCheck: checked === null ? null : new Date(checked).toISOString() },
@@ -68,10 +69,12 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
     if (!JOB_NAME.test(name)) return error(400, "job name must match [A-Za-z0-9_-]{1,64}");
     try {
       const schedule = readSchedule(url.searchParams);
-      const result =
+      const detail = action === "fail" ? await request.text() : "";
+      const result = await retryD1(async () =>
         action === "ping"
           ? { job: await recordPing(env.DB, name, schedule, now), opened: false }
-          : await recordFailure(env.DB, name, schedule, await request.text(), now);
+          : await recordFailure(env.DB, name, schedule, detail, now),
+      );
       ctx.waitUntil(flushNotifications(env));
       return json({
         ok: true,
@@ -90,7 +93,7 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
   if (url.pathname === "/api/status") {
     if (request.method !== "GET") return error(405, "use GET");
     if (!hasToken(request, env.READ_TOKEN)) return error(401, "missing or wrong read token");
-    return json(await readStatus(env.DB, now));
+    return json(await retryD1(() => readStatus(env.DB, now)));
   }
 
   if (url.pathname === "/") {
@@ -102,7 +105,7 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
     if (!request.headers.has("Cf-Access-Jwt-Assertion")) {
       return new Response("The status page is only served behind Cloudflare Access.\n", { status: 403 });
     }
-    return new Response(renderStatusPage(await readStatus(env.DB, now)), {
+    return new Response(renderStatusPage(await retryD1(() => readStatus(env.DB, now))), {
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
@@ -117,7 +120,7 @@ export default {
   // run many minutes late, after later runs, still carrying its original
   // scheduledTime. Recorded as the last check, that time made /health fail.
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
-    await checkDeadlines(env.DB, Date.now());
+    await retryD1(() => checkDeadlines(env.DB, Date.now()));
     await flushNotifications(env);
   },
 } satisfies ExportedHandler<Env>;
